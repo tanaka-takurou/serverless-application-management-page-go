@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless Application Management Page
+
+Parameters:
+  ApplicationName:
+    Type: String
+    Default: 'ServerlessApplicationManagementPage'
+  FrontPageApiStageName:
+    Type: String
+    Default: 'ProdStage'
+
+Resources:
+  FrontPageApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: ServerlessApplicationManagementPageApi
+      EndpointConfiguration: REGIONAL
+      StageName: !Ref FrontPageApiStageName
+  FrontPageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ServerlessApplicationManagementPageFrontFunction
+      CodeUri: bin/
+      Handler: main
+      MemorySize: 256
+      Runtime: go1.x
+      Description: 'ApplicationManagement Function'
+      Policies:
+      Environment:
+        Variables:
+          REGION: !Ref 'AWS::Region'
+          API_PATH: !Join [ '', [ '/', !Ref FrontPageApiStageName, '/api'] ]
+      Events:
+        FrontPageApi:
+          Type: Api
+          Properties:
+            Path: '/'
+            Method: get
+            RestApiId: !Ref FrontPageApi
+  MainFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ServerlessApplicationManagementPageApiFunction
+      CodeUri: api/bin/
+      Handler: main
+      MemorySize: 256
+      Runtime: go1.x
+      Description: 'ApplicationManagement Function'
+      Role: !GetAtt MainFunctionRole.Arn
+      Environment:
+        Variables:
+          REGION: !Ref 'AWS::Region'
+      Events:
+        FrontPageApi:
+          Type: Api
+          Properties:
+            Path: '/api'
+            Method: post
+            RestApiId: !Ref FrontPageApi
+  MainFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: ManagementApplicationPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 'serverlessrepo:ListApplications'
+                  - 'serverlessrepo:CreateCloudFormationTemplate'
+                Resource: '*'
+              - Effect: 'Allow'
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+              - Effect: 'Allow'
+                Action:
+                  - 'cloudformation:DescribeStackResources'
+                  - 'cloudformation:DeleteStack'
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:ListStacks'
+                  - 'cloudformation:ListStackResources'
+                  - 'cloudformation:CreateChangeSet'
+                Resource: '*'
+              - Effect: 'Allow'
+                Action:
+                  - 'lambda:*'
+                  - 'events:RemoveTargets'
+                  - 'events:PutTargets'
+                  - 'events:DescribeRule'
+                  - 'events:DeleteRule'
+                  - 'events:PutRule'
+                  - 'iam:DeleteRolePolicy'
+                  - 'iam:DeleteRole'
+                  - 'iam:CreateRole'
+                  - 'iam:AttachRolePolicy'
+                  - 'iam:PutRolePolicy'
+                  - 'iam:GetRole'
+                  - 'iam:PassRole'
+                Resource: '*'
+              - Effect: 'Allow'
+                Action:
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                Resource: '*'
+              - Effect: 'Allow'
+                Action:
+                  - 'apigateway:*'
+                Resource: '*'
+
+Outputs:
+  APIURI:
+    Description: "URI"
+    Value: !Join [ '', [ 'https://', !Ref FrontPageApi, '.execute-api.',!Ref 'AWS::Region','.amazonaws.com/',!Ref FrontPageApiStageName,'/'] ]

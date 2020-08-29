@@ -1,0 +1,16 @@
+#item_container {
+  min-height: 50px;
+}
+#item_container > .item {
+  padding: 0.5rem 0 !important;
+}
+body > .ui.container {
+    margin-top: 3em;
+}
+body {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+.ui.teal.disabled.loading.button {
+  min-width: 85px;
+  min-height: 36px;
+}

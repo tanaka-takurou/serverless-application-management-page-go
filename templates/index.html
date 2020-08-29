@@ -1,0 +1,24 @@
+{{define "base"}}
+<!doctype html>
+<html>
+  <head>
+{{template "headtag" .}}
+  </head>
+  <body>
+    <div class="ui container">
+      <h1 class="ui center aligned header">Serverless Application List</h1>
+      <div class="main ui middle aligned center">
+        <div class="ui column container">
+          <div class="ui segment">
+            <div id="item_container" class="ui middle aligned divided list">
+              <div class="ui active inverted dimmer">
+                <div class="ui loader"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+{{end}}
