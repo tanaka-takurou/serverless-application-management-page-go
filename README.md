@@ -4,7 +4,7 @@ Simple kit for serverless application management page using AWS Lambda.
 
 ## Dependence
 - aws-lambda-go
-- aws-sdk-go
+- aws-sdk-go-v2
 
 
 ## Requirements
