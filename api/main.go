@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"log"
 	"time"
-	"bytes"
 	"context"
 	"strings"
-	"reflect"
 	"net/http"
 	"encoding/json"
 	"github.com/aws/aws-lambda-go/events"
@@ -39,7 +37,6 @@ type APIResponse struct {
 
 type Response events.APIGatewayProxyResponse
 
-var cfg aws.Config
 var cloudformationClient *cloudformation.Client
 var serverlessApplicationRepositoryClient *serverlessapplicationrepository.Client
 
@@ -96,7 +93,7 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 
 func getApplications(ctx context.Context)([]Application, error) {
 	if serverlessApplicationRepositoryClient == nil {
-		serverlessApplicationRepositoryClient = getSARClient()
+		serverlessApplicationRepositoryClient = getSARClient(ctx)
 	}
 	res, err := serverlessApplicationRepositoryClient.ListApplications(ctx, &serverlessapplicationrepository.ListApplicationsInput{})
 	if err != nil {
@@ -105,8 +102,8 @@ func getApplications(ctx context.Context)([]Application, error) {
 	var applicationList []Application
 	for _, i := range res.Applications {
 		applicationList = append(applicationList, Application{
-			Name:        stringValue(i.Name),
-			Description: stringValue(i.Description),
+			Name:        aws.ToString(i.Name),
+			Description: aws.ToString(i.Description),
 			Stack:       Stack{},
 		})
 	}
@@ -119,7 +116,7 @@ func getApplications(ctx context.Context)([]Application, error) {
 
 func getApplicationId(ctx context.Context, name string)(string, error) {
 	if serverlessApplicationRepositoryClient == nil {
-		serverlessApplicationRepositoryClient = getSARClient()
+		serverlessApplicationRepositoryClient = getSARClient(ctx)
 	}
 	res, err := serverlessApplicationRepositoryClient.ListApplications(ctx, &serverlessapplicationrepository.ListApplicationsInput{})
 	if err != nil {
@@ -127,8 +124,8 @@ func getApplicationId(ctx context.Context, name string)(string, error) {
 	}
 	var applicationId string
 	for _, i := range res.Applications {
-		if name == stringValue(i.Name) {
-			applicationId = stringValue(i.ApplicationId)
+		if name == aws.ToString(i.Name) {
+			applicationId = aws.ToString(i.ApplicationId)
 			break
 		}
 	}
@@ -137,7 +134,7 @@ func getApplicationId(ctx context.Context, name string)(string, error) {
 
 func getTemplateUrl(ctx context.Context, applicationId string)(string, error) {
 	if serverlessApplicationRepositoryClient == nil {
-		serverlessApplicationRepositoryClient = getSARClient()
+		serverlessApplicationRepositoryClient = getSARClient(ctx)
 	}
 	res, err := serverlessApplicationRepositoryClient.CreateCloudFormationTemplate(ctx, &serverlessapplicationrepository.CreateCloudFormationTemplateInput{
 		ApplicationId: aws.String(applicationId),
@@ -145,37 +142,37 @@ func getTemplateUrl(ctx context.Context, applicationId string)(string, error) {
 	if err != nil {
 		return "", err
 	}
-	return stringValue(res.TemplateUrl), nil
+	return aws.ToString(res.TemplateUrl), nil
 }
 
 func addStackData(ctx context.Context, applicationList []Application)([]Application, error) {
 	if cloudformationClient == nil {
-		cloudformationClient = getCloudformationClient()
+		cloudformationClient = getCloudformationClient(ctx)
 	}
 	res, err := cloudformationClient.ListStacks(ctx, &cloudformation.ListStacksInput{
 		StackStatusFilter: []types.StackStatus{
-			types.StackStatusCreate_complete,
-			types.StackStatusCreate_in_progress,
-			types.StackStatusDelete_in_progress,
+			types.StackStatusCreateComplete,
+			types.StackStatusCreateInProgress,
+			types.StackStatusDeleteInProgress,
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 	for _, i := range res.StackSummaries {
-		stackName := stringValue(i.StackName)
+		stackName := aws.ToString(i.StackName)
 		for n, j := range applicationList {
 			if strings.HasPrefix(stackName, j.Name) {
 				var url string
-				if i.StackStatus == types.StackStatusCreate_complete{
+				if i.StackStatus == types.StackStatusCreateComplete{
 					res_, err := cloudformationClient.ListStackResources(ctx, &cloudformation.ListStackResourcesInput{StackName: i.StackName})
 					if err != nil {
 						log.Println(err)
 						break
 					}
 					for _, j := range res_.StackResourceSummaries {
-						if stringValue(j.ResourceType) == "AWS::ApiGatewayV2::Api" {
-							url = "https://" + stringValue(j.PhysicalResourceId) + ".execute-api." + os.Getenv("REGION") + ".amazonaws.com/"
+						if aws.ToString(j.ResourceType) == "AWS::ApiGatewayV2::Api" {
+							url = "https://" + aws.ToString(j.PhysicalResourceId) + ".execute-api." + os.Getenv("REGION") + ".amazonaws.com/"
 						}
 					}
 				}
@@ -201,12 +198,12 @@ func createStack(ctx context.Context, name string) error {
 	t := time.Now()
 	stackName := name + strings.Replace(t.Format(layout), ".", "", 1)
 	if cloudformationClient == nil {
-		cloudformationClient = getCloudformationClient()
+		cloudformationClient = getCloudformationClient(ctx)
 	}
 	_, err = cloudformationClient.CreateStack(ctx, &cloudformation.CreateStackInput{
 		Capabilities: []types.Capability{
-			types.CapabilityCapability_iam,
-			types.CapabilityCapability_auto_expand,
+			types.CapabilityCapabilityIam,
+			types.CapabilityCapabilityAutoExpand,
 		},
 		StackName: aws.String(stackName),
 		TemplateURL: aws.String(templateUrl),
@@ -220,7 +217,7 @@ func createStack(ctx context.Context, name string) error {
 
 func deleteStack(ctx context.Context, name string) error {
 	if cloudformationClient == nil {
-		cloudformationClient = getCloudformationClient()
+		cloudformationClient = getCloudformationClient(ctx)
 	}
 	_, err := cloudformationClient.DeleteStack(ctx, &cloudformation.DeleteStackInput{
 		StackName: aws.String(name),
@@ -242,96 +239,21 @@ func getTargetStack(name string, list []Stack) Stack {
 	return stack
 }
 
-func getSARClient() *serverlessapplicationrepository.Client {
-	if cfg.Region != os.Getenv("REGION") {
-		cfg = getConfig()
-	}
-	return serverlessapplicationrepository.NewFromConfig(cfg)
+func getSARClient(ctx context.Context) *serverlessapplicationrepository.Client {
+	return serverlessapplicationrepository.NewFromConfig(getConfig(ctx))
 }
 
-func getCloudformationClient() *cloudformation.Client {
-	if cfg.Region != os.Getenv("REGION") {
-		cfg = getConfig()
-	}
-	return cloudformation.NewFromConfig(cfg)
+func getCloudformationClient(ctx context.Context) *cloudformation.Client {
+	return cloudformation.NewFromConfig(getConfig(ctx))
 }
 
-func getConfig() aws.Config {
+func getConfig(ctx context.Context) aws.Config {
 	var err error
-	newConfig, err := config.LoadDefaultConfig()
-	newConfig.Region = os.Getenv("REGION")
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(os.Getenv("REGION")))
 	if err != nil {
 		log.Print(err)
 	}
-	return newConfig
-}
-
-func stringValue(i interface{}) string {
-	var buf bytes.Buffer
-	strVal(reflect.ValueOf(i), 0, &buf)
-	res := buf.String()
-	return res[1:len(res) - 1]
-}
-
-func strVal(v reflect.Value, indent int, buf *bytes.Buffer) {
-	for v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-	switch v.Kind() {
-	case reflect.Struct:
-		buf.WriteString("{\n")
-		for i := 0; i < v.Type().NumField(); i++ {
-			ft := v.Type().Field(i)
-			fv := v.Field(i)
-			if ft.Name[0:1] == strings.ToLower(ft.Name[0:1]) {
-				continue // ignore unexported fields
-			}
-			if (fv.Kind() == reflect.Ptr || fv.Kind() == reflect.Slice) && fv.IsNil() {
-				continue // ignore unset fields
-			}
-			buf.WriteString(strings.Repeat(" ", indent+2))
-			buf.WriteString(ft.Name + ": ")
-			if tag := ft.Tag.Get("sensitive"); tag == "true" {
-				buf.WriteString("<sensitive>")
-			} else {
-				strVal(fv, indent+2, buf)
-			}
-			buf.WriteString(",\n")
-		}
-		buf.WriteString("\n" + strings.Repeat(" ", indent) + "}")
-	case reflect.Slice:
-		nl, id, id2 := "", "", ""
-		if v.Len() > 3 {
-			nl, id, id2 = "\n", strings.Repeat(" ", indent), strings.Repeat(" ", indent+2)
-		}
-		buf.WriteString("[" + nl)
-		for i := 0; i < v.Len(); i++ {
-			buf.WriteString(id2)
-			strVal(v.Index(i), indent+2, buf)
-			if i < v.Len()-1 {
-				buf.WriteString("," + nl)
-			}
-		}
-		buf.WriteString(nl + id + "]")
-	case reflect.Map:
-		buf.WriteString("{\n")
-		for i, k := range v.MapKeys() {
-			buf.WriteString(strings.Repeat(" ", indent+2))
-			buf.WriteString(k.String() + ": ")
-			strVal(v.MapIndex(k), indent+2, buf)
-			if i < v.Len()-1 {
-				buf.WriteString(",\n")
-			}
-		}
-		buf.WriteString("\n" + strings.Repeat(" ", indent) + "}")
-	default:
-		format := "%v"
-		switch v.Interface().(type) {
-		case string:
-			format = "%q"
-		}
-		fmt.Fprintf(buf, format, v.Interface())
-	}
+	return cfg
 }
 
 func main() {
