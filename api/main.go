@@ -136,13 +136,32 @@ func getTemplateUrl(ctx context.Context, applicationId string)(string, error) {
 	if serverlessApplicationRepositoryClient == nil {
 		serverlessApplicationRepositoryClient = getSARClient(ctx)
 	}
+	semanticVersion, err := getLatestApplicationVersion(ctx, applicationId)
+	if err != nil {
+		return "", err
+	}
 	res, err := serverlessApplicationRepositoryClient.CreateCloudFormationTemplate(ctx, &serverlessapplicationrepository.CreateCloudFormationTemplateInput{
 		ApplicationId: aws.String(applicationId),
+		SemanticVersion: aws.String(semanticVersion),
 	})
 	if err != nil {
 		return "", err
 	}
 	return aws.ToString(res.TemplateUrl), nil
+}
+
+func getLatestApplicationVersion(ctx context.Context, applicationId string)(string, error) {
+	if serverlessApplicationRepositoryClient == nil {
+		serverlessApplicationRepositoryClient = getSARClient(ctx)
+	}
+	res, err := serverlessApplicationRepositoryClient.ListApplicationVersions(ctx, &serverlessapplicationrepository.ListApplicationVersionsInput{
+		ApplicationId: aws.String(applicationId),
+	})
+	if err != nil {
+		return "", err
+	}
+	latestVersionSummary := res.Versions[len(res.Versions) - 1]
+	return aws.ToString(latestVersionSummary.SemanticVersion), nil
 }
 
 func addStackData(ctx context.Context, applicationList []Application)([]Application, error) {
