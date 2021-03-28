@@ -79,6 +79,7 @@ Resources:
               - Effect: 'Allow'
                 Action:
                   - 'serverlessrepo:ListApplications'
+                  - 'serverlessrepo:ListApplicationVersions'
                   - 'serverlessrepo:CreateCloudFormationTemplate'
                 Resource: '*'
               - Effect: 'Allow'
